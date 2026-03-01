@@ -1,6 +1,6 @@
 // app/src/main/kotlin/com/example/nifuda_gpt_app_fixed/utils/DocumentCropper.kt
 
-package com.example.nifuda_gpt_app_fixed.utils
+package com.example.ai_scan.utils
 
 import android.graphics.Bitmap
 import android.util.Log

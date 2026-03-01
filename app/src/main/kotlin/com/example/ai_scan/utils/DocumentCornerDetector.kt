@@ -1,6 +1,6 @@
 // app/src/main/kotlin/com/example/nifuda_gpt_app_fixed/utils/DocumentCornerDetector.kt
 
-package com.example.nifuda_gpt_app_fixed.utils
+package com.example.ai_scan.utils
 
 import android.content.Context
 import android.graphics.Bitmap

@@ -1,4 +1,4 @@
-package com.example.nifuda_gpt_app_fixed
+package com.example.ai_scan.utils
 
 import android.content.Context
 import android.graphics.Canvas

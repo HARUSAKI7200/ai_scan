@@ -1,6 +1,6 @@
 // app/src/main/kotlin/com/example/nifuda_gpt_app_fixed/CameraActivity.kt
 
-package com.example.nifuda_gpt_app_fixed
+package com.example.ai_scan
 
 import android.Manifest
 import android.content.Context
@@ -36,9 +36,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.example.nifuda_gpt_app_fixed.utils.DocumentCornerDetector
-import com.example.nifuda_gpt_app_fixed.utils.DocumentCropper
-import com.example.nifuda_gpt_app_fixed.utils.GeminiDocumentCropper
+import com.example.ai_scan.utils.DocumentCornerDetector
+import com.example.ai_scan.utils.DocumentCropper
+import com.example.ai_scan.utils.GeminiDocumentCropper
 import org.opencv.android.OpenCVLoader
 import java.io.File
 import java.io.FileOutputStream

@@ -18,9 +18,9 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
-import com.example.nifuda_gpt_app_fixed.utils.DocumentCornerDetector
-import com.example.nifuda_gpt_app_fixed.utils.DocumentCropper
-import com.example.nifuda_gpt_app_fixed.utils.GeminiDocumentCropper
+import com.example.ai_scan.utils.DocumentCornerDetector
+import com.example.ai_scan.utils.DocumentCropper
+import com.example.ai_scan.utils.GeminiDocumentCropper
 import org.opencv.android.OpenCVLoader
 
 class MainActivity: FlutterActivity() {
