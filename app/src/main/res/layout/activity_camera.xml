@@ -13,7 +13,7 @@
         android:layout_height="match_parent"
         app:scaleType="fitCenter" />
 
-    <com.example.nifuda_gpt_app_fixed.OverlayView
+    <com.example.ai_scan.OverlayView
         android:id="@+id/overlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

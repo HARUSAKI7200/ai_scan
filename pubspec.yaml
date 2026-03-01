@@ -3,28 +3,30 @@ description: "A new Flutter project."
 
 publish_to: 'none' 
 
-
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.3
-
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
+    sdk: flutter
+  
+  # ★追加: 日本語化対応に必須
+  flutter_localizations:
     sdk: flutter
 
   # --- UI & Utilities ---
   flutter_riverpod: ^2.5.1  # 状態管理
   path: ^1.9.1
   path_provider: ^2.1.3
-  intl: ^0.19.0
-  image: ^4.1.7             # 画像処理
+  intl: ^0.20.2
+  image: ^4.0.6            # 画像処理
   flutter_image_compress: ^2.4.0
   permission_handler: ^12.0.1
-  file_picker: ^10.3.2
-  share_plus: ^7.0.2        # エクセル共有用
-  url_launcher: ^6.2.5      # 追加推奨（リンクを開く等）
+  file_picker: ^10.3.10
+  share_plus: ^12.0.1        # エクセル共有用
+  url_launcher: ^6.3.2      # 追加推奨（リンクを開く等）
 
   # --- Database ---
   drift: ^2.29.0
@@ -35,8 +37,8 @@ dependencies:
 
   # --- Camera & Native ---
   camera: ^0.11.3
+  camera_android_camerax: ^0.6.27
   google_mlkit_text_recognition: ^0.15.0 # キーワード検知用（必要なら）
-  # camera_android_camerax: ^0.6.27 # 必要に応じて
 
   # --- AI ---
   http: ^1.2.1              # Gemini API用
@@ -44,8 +46,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
-
+  flutter_lints: ^3.0.0
+  drift_dev: ^2.29.0
+  build_runner: ^2.4.13
 
 flutter:
   uses-material-design: true

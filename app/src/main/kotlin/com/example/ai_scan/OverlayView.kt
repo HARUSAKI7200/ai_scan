@@ -1,4 +1,4 @@
-package com.example.ai_scan.utils
+package com.example.ai_scan
 
 import android.content.Context
 import android.graphics.Canvas

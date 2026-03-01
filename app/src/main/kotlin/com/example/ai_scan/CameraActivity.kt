@@ -1,5 +1,3 @@
-// app/src/main/kotlin/com/example/nifuda_gpt_app_fixed/CameraActivity.kt
-
 package com.example.ai_scan
 
 import android.Manifest
@@ -74,7 +72,6 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
     private var accelerometer: Sensor? = null
     private var isDeviceStable = false
     
-    // ★ 追加: 撮影中フラグ（連続クリック防止）
     private var isCapturingInProgress = false
     
     private var orientationEventListener: OrientationEventListener? = null
@@ -155,7 +152,6 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         }
 
         shutterButton.setOnClickListener {
-            // ★ 修正: 撮影中でなく、かつ安定している場合のみ撮影
             if (!isCapturingInProgress && isDeviceStable) {
                 takePhoto()
             } else if (!isDeviceStable) {
@@ -210,7 +206,8 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
             val cameraInfo = cameraProvider.availableCameraInfos.firstOrNull {
-                val facing = Camera2CameraInfo.from(it).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+                // ★修正箇所: <Int> を追加して型推論エラーを解消
+                val facing = Camera2CameraInfo.from(it).getCameraCharacteristic<Int>(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
                 facing == android.hardware.camera2.CameraMetadata.LENS_FACING_BACK
             } ?: return@addListener
 
@@ -291,28 +288,21 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         updateStabilityUI(score)
     }
 
-    // ★ 修正: シャッターボタンの有効・無効状態を明示的に制御するように変更
     private fun updateStabilityUI(score: Int) {
         runOnUiThread {
             stabilityBar.progress = score
             if (isDeviceStable) {
                 stabilityBar.progressTintList = ColorStateList.valueOf(Color.GREEN)
-                
-                // 撮影中でなければボタンを有効化する
                 if (!isCapturingInProgress) {
                     shutterButton.isEnabled = true
                     shutterButton.alpha = 1.0f
                 }
-                
                 statusTextView.text = if (mode == "product_list") "製品リスト撮影 (OK)" else "荷札撮影 (OK)"
                 statusTextView.setTextColor(Color.GREEN)
             } else {
                 stabilityBar.progressTintList = ColorStateList.valueOf(Color.RED)
-                
-                // 不安定な時は撮影中でもそうでなくても無効化する
                 shutterButton.isEnabled = false
                 shutterButton.alpha = 0.5f
-                
                 statusTextView.text = "端末を固定してください..."
                 statusTextView.setTextColor(Color.RED)
             }
@@ -368,11 +358,9 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // ★ 修正: 連続撮影を可能にするため、フラグ管理とロック解除を改善
     private fun takePhoto() {
         val ic = imageCapture ?: return
         
-        // 撮影処理開始（ボタンをロック）
         isCapturingInProgress = true
         shutterButton.isEnabled = false
         shutterButton.alpha = 0.5f
@@ -406,17 +394,13 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
                         Toast.makeText(baseContext, "撮影エラー", Toast.LENGTH_SHORT).show()
                         processingCount.decrementAndGet()
                         updateDoneButtonText()
-                        
-                        // エラー時もボタン復帰の試行を行う
                         isCapturingInProgress = false
                         updateStabilityUI(stabilityBar.progress)
                     }
                 }
                 override fun onImageSaved(res: ImageCapture.OutputFileResults) {
-                    // 撮影完了したのでフラグを戻す（次の撮影を許可）
                     runOnUiThread {
                         isCapturingInProgress = false
-                        // 500msのガードを置いて連打を防ぎつつ、安定度に応じてボタンを復活させる
                         shutterButton.postDelayed({
                             updateStabilityUI(stabilityBar.progress)
                         }, 500)

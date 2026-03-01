@@ -1,5 +1,3 @@
-// app/src/main/kotlin/com/example/ai_scan/MainActivity.kt
-
 package com.example.ai_scan
 
 import android.content.BroadcastReceiver
@@ -11,13 +9,14 @@ import android.media.ExifInterface
 import android.media.MediaScannerConnection
 import android.os.Bundle
 import android.util.Log
-import androidx.core.content.ContextCompat // ★ 追加: ContextCompatを使用
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+// ★修正: パッケージ名を ai_scan に変更
 import com.example.ai_scan.utils.DocumentCornerDetector
 import com.example.ai_scan.utils.DocumentCropper
 import com.example.ai_scan.utils.GeminiDocumentCropper
@@ -29,9 +28,9 @@ class MainActivity: FlutterActivity() {
     private val CHANNEL_NIFUDA_EVENT = "com.example.app/nifuda_events"
     
     private val CAMERA_REQUEST_CODE = 1001
-    private val NIFUDA_CAMERA_REQUEST_CODE = 1002 
-    private var cameraResult: MethodChannel.Result? = null
+    // private val NIFUDA_CAMERA_REQUEST_CODE = 1002 // ★削除
 
+    private var cameraResult: MethodChannel.Result? = null
     private var eventSink: EventChannel.EventSink? = null
 
     private val captureReceiver = object : BroadcastReceiver() {
@@ -54,13 +53,11 @@ class MainActivity: FlutterActivity() {
             Log.e("OpenCV", "OpenCV initialization failed!")
         }
         
-        // ★ 修正: LocalBroadcastManager を廃止し、標準の registerReceiver を使用
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NIFUDA_EVENT).setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     eventSink = events
                     val filter = IntentFilter("com.example.app.NIFUDA_CAPTURED")
-                    // Android 13以降に対応するため ContextCompat を使用し、RECEIVER_NOT_EXPORTED を指定
                     ContextCompat.registerReceiver(
                         this@MainActivity,
                         captureReceiver,
@@ -74,7 +71,6 @@ class MainActivity: FlutterActivity() {
                     try {
                         unregisterReceiver(captureReceiver)
                     } catch (e: Exception) {
-                        // 登録されていない場合の解除エラーを無視
                     }
                 }
             }
@@ -123,13 +119,7 @@ class MainActivity: FlutterActivity() {
                 intent.putExtra("mode", if (isProductList) "product_list" else "tag")
                 startActivityForResult(intent, CAMERA_REQUEST_CODE)
             } 
-            else if (call.method == "startNifudaCamera") {
-                cameraResult = result
-                val keywords = call.argument<List<String>>("keywords") ?: emptyList()
-                val intent = Intent(this, NifudaCameraActivity::class.java)
-                intent.putStringArrayListExtra("keywords", ArrayList(keywords))
-                startActivityForResult(intent, NIFUDA_CAMERA_REQUEST_CODE)
-            }
+            // ★削除: startNifudaCamera のブロックを削除（エラーの原因）
             else { result.notImplemented() }
         }
     }
@@ -208,7 +198,7 @@ class MainActivity: FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == CAMERA_REQUEST_CODE || requestCode == NIFUDA_CAMERA_REQUEST_CODE) {
+        if (requestCode == CAMERA_REQUEST_CODE) { // ★修正: NIFUDA_CAMERA_REQUEST_CODE を削除
             val res = if (resultCode == RESULT_OK) data?.getStringArrayListExtra("captured_paths") else null
             cameraResult?.success(res); cameraResult = null
         }
