@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'database/app_database.dart';
 import 'pages/home_page.dart';
 
@@ -13,6 +15,11 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ★追加: Firebaseの初期化
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   // 画面の向きを固定（スマホ利用を想定して縦向きメインだが、必要に応じて解放）
   await SystemChrome.setPreferredOrientations([

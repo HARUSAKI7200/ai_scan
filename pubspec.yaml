@@ -16,6 +16,10 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  # --- Firebase ---
+  firebase_core: ^3.6.0
+  cloud_functions: ^5.1.3
+
   # --- UI & Utilities ---
   flutter_riverpod: ^2.5.1  # 状態管理
   path: ^1.9.1
@@ -41,7 +45,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.15.0 # キーワード検知用（必要なら）
 
   # --- AI ---
-  http: ^1.2.1              # Gemini API用
+  http: ^1.2.1              # Gemini API用（後ほど削除予定ですが一旦残します）
 
 dev_dependencies:
   flutter_test:
