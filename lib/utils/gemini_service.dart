@@ -28,11 +28,22 @@ class GeminiService {
         'customInstruction': customInstruction,
       });
 
-      // 5. 結果（JSON文字列）をパースして返す
       final resultData = response.data as Map<dynamic, dynamic>;
       final resultJsonString = resultData['resultJsonString'] as String;
-      
-      return jsonDecode(resultJsonString) as Map<String, dynamic>;
+
+      final dynamic decodedJson = jsonDecode(resultJsonString);
+
+      // AIがリスト（配列）で返してきた場合の対処
+      if (decodedJson is List) {
+        if (decodedJson.isNotEmpty) {
+          return decodedJson.first as Map<String, dynamic>;
+        } else {
+          return {};
+        }
+      }
+
+      // AIが辞書で返してきた場合（通常）
+      return decodedJson as Map<String, dynamic>;
 
     } on FirebaseFunctionsException catch (e) {
       throw Exception('Firebase Functions Error [${e.code}]: ${e.message}');
