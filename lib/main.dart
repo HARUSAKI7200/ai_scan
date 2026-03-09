@@ -16,16 +16,22 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ★追加: Firebaseの初期化
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 画面の向きを固定（スマホ利用を想定して縦向きメインだが、必要に応じて解放）
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // ステータスバーの色を透明に設定
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
 
   runApp(const ProviderScope(child: AiScanApp()));
 }
@@ -35,36 +41,93 @@ class AiScanApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // グラスモーフィズムに合う、少し青みがかったアクセントカラー
+    const accentColor = Color(0xFF667EEA); 
+
     return MaterialApp(
       title: 'AI Scan Excel',
       debugShowCheckedModeBanner: false,
       
-      // テーマ設定: 清潔感のあるビジネスライクなデザイン
       theme: ThemeData(
         useMaterial3: true,
+        // ★ 背景は各画面でグラデーションを描画するため透明に設定
+        scaffoldBackgroundColor: Colors.transparent,
+        fontFamily: 'NotoSansJP',
+        
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
+          seedColor: accentColor,
+          primary: accentColor,
+          // すりガラス感を邪魔しないように表面色も透明ベースに
+          surface: Colors.transparent, 
         ),
+        
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
+          scrolledUnderElevation: 0, 
+          backgroundColor: Colors.transparent,
+          foregroundColor: Color(0xFF1E293B),
+          titleTextStyle: TextStyle(
+            fontFamily: 'NotoSansJP',
+            color: Color(0xFF1E293B),
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+          ),
+          iconTheme: IconThemeData(color: Color(0xFF1E293B)),
         ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: Colors.blue,
+
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: accentColor,
           foregroundColor: Colors.white,
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
         ),
-        // ★修正: cardThemeの設定を削除（型エラー回避のため）
+
+        // ボタンも少し丸みを帯びたリッチなデザインに
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            elevation: 4, 
+            shadowColor: accentColor.withOpacity(0.5),
+            backgroundColor: accentColor,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            textStyle: const TextStyle(
+              fontFamily: 'NotoSansJP',
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+
         inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           filled: true,
-          fillColor: Colors.grey[50],
+          // 入力フォーム自体も少し透けさせる
+          fillColor: Colors.white.withOpacity(0.6),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: Colors.white.withOpacity(0.8), width: 1.5),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: Colors.white.withOpacity(0.8), width: 1.5),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: accentColor, width: 2),
+          ),
+          labelStyle: TextStyle(color: Colors.grey.shade700),
+          hintStyle: TextStyle(color: Colors.grey.shade500),
         ),
       ),
 
-      // 日本語化対応
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
