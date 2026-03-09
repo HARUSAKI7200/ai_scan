@@ -47,6 +47,9 @@ dependencies:
   # --- AI ---
   http: ^1.2.1              # Gemini API用（後ほど削除予定ですが一旦残します）
 
+  # ★追加: UIの商用化（フォントとアニメーション）
+  flutter_animate: ^4.5.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,3 +59,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# ★追加: ローカルフォントの登録
+  fonts:
+    - family: NotoSansJP
+      fonts:
+        - asset: assets/fonts/NotoSansJP-Regular.ttf
+        - asset: assets/fonts/NotoSansJP-Bold.ttf
+          weight: 700
