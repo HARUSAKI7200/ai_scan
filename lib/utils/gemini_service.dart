@@ -1,3 +1,5 @@
+// lib/utils/gemini_service.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -21,8 +23,15 @@ class GeminiService {
       // 3. セキュアなシステムプロンプトの構築（ユーザー入力を排除）
       String instruction = '';
       if (mode == 'text') {
-        // パターン1: 全文読み取りモード
-        instruction = '画像内のすべての文字を正確に読み取り、必ずJSON形式で {"text": "読み取った全文"} のように出力してください。改行や空白も可能な限り元のレイアウトを保持してください。';
+        // ★修正: パターン1: 全文読み取りモードのプロンプトを大幅に強化
+        instruction = '''
+画像内のすべての文字を、見た目のレイアウト（改行位置、空白、インデント、段落）を完全に維持したまま正確に読み取ってください。
+特に以下の点に注意してください：
+1. 画像上の物理的な「行の終わり」と「実際の改行位置」を完全に一致させ、必ず改行文字（\\n）を挿入してください。
+2. 文字の配置やスペース（空白）も忠実に再現してください。AIの推測で文章を繋げたり、改行を削除したりしないでください。
+3. 出力は必ず以下のJSON形式のみとしてください。Markdown記法（```json など）は絶対に含めないでください。
+{"text": "読み取った全文（見たままの改行を含む）"}
+''';
       } else {
         // パターン2: 表・リスト読み取りモード
         final fieldsStr = targetFields.join(', ');
@@ -52,7 +61,7 @@ class GeminiService {
           return {'text': decodedJson.toString()}; // フォールバック
         }
       } else {
-        // 表モードの場合の受け取り処理（前回と同じ）
+        // 表モードの場合の受け取り処理
         if (decodedJson is List) {
           final List<Map<String, dynamic>> items = decodedJson.map((e) {
             if (e is Map) return Map<String, dynamic>.from(e);

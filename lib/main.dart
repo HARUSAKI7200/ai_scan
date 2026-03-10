@@ -6,7 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'database/app_database.dart';
-import 'pages/home_page.dart';
+import 'features/main_navigation_page.dart'; // ★ HomePageから変更
 
 // データベースのプロバイダー
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -137,7 +137,8 @@ class AiScanApp extends StatelessWidget {
         Locale('ja', 'JP'),
       ],
 
-      home: const HomePage(),
+      // ★ 起動画面を MainNavigationPage に変更
+      home: const MainNavigationPage(),
     );
   }
 }
