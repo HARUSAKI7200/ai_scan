@@ -1,3 +1,5 @@
+// kotlin/com/example/ai_scan/CameraActivity.kt
+
 package com.example.ai_scan
 
 import android.Manifest
@@ -15,10 +17,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.ExifInterface
-import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.util.Size
 import android.view.OrientationEventListener
@@ -206,7 +206,6 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
             val cameraInfo = cameraProvider.availableCameraInfos.firstOrNull {
-                // ★修正箇所: <Int> を追加して型推論エラーを解消
                 val facing = Camera2CameraInfo.from(it).getCameraCharacteristic<Int>(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
                 facing == android.hardware.camera2.CameraMetadata.LENS_FACING_BACK
             } ?: return@addListener
@@ -297,7 +296,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
                     shutterButton.isEnabled = true
                     shutterButton.alpha = 1.0f
                 }
-                statusTextView.text = if (mode == "product_list") "製品リスト撮影 (OK)" else "荷札撮影 (OK)"
+                statusTextView.text = if (mode == "product_list") "製品リスト撮影 (OK)" else "書類撮影 (OK)"
                 statusTextView.setTextColor(Color.GREEN)
             } else {
                 stabilityBar.progressTintList = ColorStateList.valueOf(Color.RED)
@@ -437,12 +436,13 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
             }
 
             if (maskMat != null) {
-                val dcimDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-                val debugDir = File(dcimDir, "debug_crop").apply { mkdirs() }
+                // ★修正: デバッグ画像の保存先もアプリ専用領域（filesDir）に変更
+                val debugDir = File(filesDir, "debug_crop").apply { mkdirs() }
                 val debugSavePath = File(debugDir, "debug_${file.name}").absolutePath
 
                 croppedBitmap = DocumentCropper.processFullPipeline(rotatedBitmap!!, maskMat!!, debugSavePath)
-                MediaScannerConnection.scanFile(this, arrayOf(debugSavePath), null, null)
+                // ★修正: 内部ストレージの場合はMediaScannerは機能しないため削除
+                // MediaScannerConnection.scanFile(this, arrayOf(debugSavePath), null, null)
             }
             
             val sourceForEnhancement = croppedBitmap ?: rotatedBitmap
@@ -533,9 +533,10 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         finish()
     }
 
+    // ★修正: 保存先をアプリ専用領域（filesDir）に完全固定。権限不要になります。
     private fun getOutputDirectory(): File {
-        val mediaDir = externalMediaDirs.firstOrNull()?.let { File(it, "NifudaGPTApp").apply { mkdirs() } }
-        return if (mediaDir != null && mediaDir.exists()) mediaDir else filesDir
+        val outputDir = File(filesDir, "AiScanApp").apply { mkdirs() }
+        return outputDir
     }
 
     private fun triggerShutterEffect() {
@@ -550,17 +551,9 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
 
+    // ★修正: 審査でリジェクトされるストレージ権限を完全に削除し、カメラ権限のみを要求するように変更
     private fun getRequiredPermissions(): Array<String> {
-        val permissions = mutableListOf(Manifest.permission.CAMERA)
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-        } else {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-        
-        return permissions.toTypedArray()
+        return arrayOf(Manifest.permission.CAMERA)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
@@ -569,7 +562,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
             if (allPermissionsGranted()) {
                 viewFinder.post { startCamera() }
             } else {
-                Toast.makeText(this, "必要な権限が拒否されました", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "カメラへのアクセスを許可してください", Toast.LENGTH_LONG).show()
                 finish()
             }
         }
