@@ -13,17 +13,20 @@ import '../database/app_database.dart';
 import '../main.dart'; // databaseProvider
 import '../features/scan/scan_result_page.dart';
 import 'gemini_service.dart';
-// ★追加: 累計スキャン回数を管理するプロバイダーをインポート
 import '../features/home/scan_count_provider.dart';
 
 class ScanHelper {
-  static const platform = MethodChannel('com.example.ai_scan/camera');
+  // ★修正: Kotlin側の CHANNEL_CAMERA と完全に一致させる
+  static const platform = MethodChannel('com.example.app/camera');
 
   static Future<void> startScan(BuildContext context, WidgetRef ref, ExtractionTemplate template) async {
+    bool isDialogShowing = false; // ダイアログの開閉状態を管理
+
     try {
       // 1. ネイティブカメラを起動
-      final List<dynamic>? resultPaths = await platform.invokeMethod('startCamera', {
-        'mode': 'document',
+      // ★修正: Kotlin側のメソッド名 'startNativeCamera' と引数に一致させる
+      final List<dynamic>? resultPaths = await platform.invokeMethod('startNativeCamera', {
+        'is_product_list': false,
       });
 
       if (resultPaths == null || resultPaths.isEmpty) {
@@ -57,6 +60,7 @@ class ScanHelper {
           ),
         ),
       );
+      isDialogShowing = true; // ダイアログを表示したことを記録
 
       // 3. 画像の圧縮処理
       final tempDir = await getTemporaryDirectory();
@@ -113,12 +117,15 @@ class ScanHelper {
         ),
       );
 
-      // ★追加: 累計スキャン回数をカウントアップして保存！
+      // 累計スキャン回数をカウントアップして保存
       await ref.read(scanCountProvider.notifier).increment();
 
       // 7. ローディングを閉じて結果画面へ遷移
       if (!context.mounted) return;
-      Navigator.pop(context); // ダイアログを閉じる
+      if (isDialogShowing) {
+        Navigator.pop(context); // ダイアログを閉じる
+        isDialogShowing = false;
+      }
       
       Navigator.push(
         context,
@@ -129,9 +136,12 @@ class ScanHelper {
 
     } catch (e) {
       if (!context.mounted) return;
-      Navigator.pop(context); // ダイアログを閉じる
+      // ★修正: カメラ起動失敗時など、ダイアログが出ていないのにpopして画面が戻るのを防ぐ
+      if (isDialogShowing) {
+        Navigator.pop(context);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('エラーが発生しました: $e')),
+        SnackBar(content: Text('エラーが発生しました: $e'), backgroundColor: Colors.red),
       );
     }
   }

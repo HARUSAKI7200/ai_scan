@@ -3,6 +3,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import 'privacy_policy_page.dart';
+// ★追加: 作成した利用規約画面をインポート
+import 'terms_of_service_page.dart';
+
 class SettingsTab extends StatelessWidget {
   const SettingsTab({super.key});
 
@@ -40,7 +44,7 @@ class SettingsTab extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // ★ 今後のサブスクリプション導線
+          // 今後のサブスクリプション導線
           _buildGlassCard(
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -67,18 +71,29 @@ class SettingsTab extends StatelessWidget {
                   onTap: () {},
                 ),
                 Divider(height: 1, color: Colors.white.withOpacity(0.5)),
+                // ★修正: 利用規約画面へ遷移するように設定
                 ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: const Text('利用規約'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const TermsOfServicePage()),
+                    );
+                  },
                 ),
                 Divider(height: 1, color: Colors.white.withOpacity(0.5)),
                 ListTile(
                   leading: const Icon(Icons.privacy_tip_outlined),
                   title: const Text('プライバシーポリシー'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const PrivacyPolicyPage()),
+                    );
+                  },
                 ),
               ],
             ),
