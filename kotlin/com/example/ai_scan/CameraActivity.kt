@@ -17,7 +17,6 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.ExifInterface
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
@@ -36,7 +35,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.ai_scan.utils.DocumentCornerDetector
 import com.example.ai_scan.utils.DocumentCropper
-import com.example.ai_scan.utils.GeminiDocumentCropper
 import org.opencv.android.OpenCVLoader
 import java.io.File
 import java.io.FileOutputStream
@@ -50,29 +48,29 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var viewFinder: PreviewView
     private lateinit var shutterButton: ImageButton
-    private lateinit var settingsButton: ImageButton 
-    private lateinit var torchButton: ImageButton    
+    private lateinit var torchButton: Button    // ★UI変更: Buttonクラスに
+    private lateinit var settingsButton: Button // ★UI追加: 解像度ボタン
     private lateinit var doneButton: Button
     private lateinit var statusTextView: TextView
     private lateinit var orientationTextView: TextView 
-    private lateinit var resTextView: TextView
+    private lateinit var resTextView: TextView  // ★UI追加: 解像度表示
     private lateinit var stabilityBar: ProgressBar
     private lateinit var shutterEffectView: View
-    private var overlayView: OverlayView? = null 
+    private lateinit var processingOverlay: View
 
     private var imageCapture: ImageCapture? = null
     private var camera: Camera? = null 
     private var cameraExecutor = Executors.newSingleThreadExecutor()
     private var isTorchOn = false 
 
-    private var selectedResolution: Size? = null
+    private var selectedResolution: Size? = null // ★追加: 選択された解像度
     private var docDetector: DocumentCornerDetector? = null
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
     private var isDeviceStable = false
-    
     private var isCapturingInProgress = false
+    private var isWaitingForProcessing = false 
     
     private var orientationEventListener: OrientationEventListener? = null
     private var currentRotation: Int = -1
@@ -106,29 +104,34 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
 
         viewFinder = findViewById(R.id.viewFinder)
         shutterButton = findViewById(R.id.btnCapture)
-        settingsButton = findViewById(R.id.btnSettings) 
         torchButton = findViewById(R.id.btnTorch)       
+        settingsButton = findViewById(R.id.btnSettings) // ★追加
         doneButton = findViewById(R.id.btnDone)
         statusTextView = findViewById(R.id.txtStability)
         orientationTextView = findViewById(R.id.txtOrientation)
-        resTextView = findViewById(R.id.txtResolution)
+        resTextView = findViewById(R.id.txtResolution)  // ★追加
         stabilityBar = findViewById(R.id.stabilityBar)
         shutterEffectView = findViewById(R.id.shutterEffectView)
-        overlayView = findViewById(R.id.overlayView)
+        processingOverlay = findViewById(R.id.processingOverlay)
 
         findViewById<ImageButton>(R.id.btnClose)?.setOnClickListener { 
             setResult(RESULT_CANCELED)
             finish() 
         }
 
-        settingsButton.setOnClickListener { showResolutionDialog() }
         torchButton.setOnClickListener { toggleTorch() }
+        settingsButton.setOnClickListener { showResolutionDialog() } // ★追加
         
         doneButton.setOnClickListener {
-            if (processingCount.get() > 0) {
-                Toast.makeText(this, "画像処理中です... (${processingCount.get()}枚)", Toast.LENGTH_SHORT).show()
-            } else if (capturedPaths.isEmpty()) {
+            if (capturedPaths.isEmpty()) {
                 Toast.makeText(this, "画像を撮影してください", Toast.LENGTH_SHORT).show()
+            } else if (processingCount.get() > 0) {
+                isWaitingForProcessing = true
+                processingOverlay.visibility = View.VISIBLE
+                shutterButton.isEnabled = false
+                doneButton.isEnabled = false
+                torchButton.isEnabled = false
+                settingsButton.isEnabled = false
             } else {
                 finishWithResult()
             }
@@ -201,6 +204,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    // ★追加: 解像度選択ダイアログの表示
     private fun showResolutionDialog() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
@@ -231,6 +235,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    // ★追加: アスペクト比の計算
     private fun getAspectRatioString(size: Size): String {
         fun calculateGcd(a: Int, b: Int): Int {
             var x = a; var y = b
@@ -244,7 +249,8 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         val cameraControl = camera?.cameraControl ?: return
         isTorchOn = !isTorchOn
         cameraControl.enableTorch(isTorchOn)
-        torchButton.setColorFilter(if (isTorchOn) Color.YELLOW else Color.WHITE)
+        // ★修正: テキストカラーの変更
+        torchButton.setTextColor(if (isTorchOn) Color.YELLOW else Color.WHITE)
     }
 
     override fun onResume() {
@@ -263,6 +269,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent?) {
         event ?: return
+        if (isWaitingForProcessing) return 
         
         var x = event.values[0]
         var y = event.values[1]
@@ -288,6 +295,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun updateStabilityUI(score: Int) {
+        if (isWaitingForProcessing) return
         runOnUiThread {
             stabilityBar.progress = score
             if (isDeviceStable) {
@@ -296,7 +304,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
                     shutterButton.isEnabled = true
                     shutterButton.alpha = 1.0f
                 }
-                statusTextView.text = if (mode == "product_list") "製品リスト撮影 (OK)" else "書類撮影 (OK)"
+                statusTextView.text = "書類撮影 (OK)"
                 statusTextView.setTextColor(Color.GREEN)
             } else {
                 stabilityBar.progressTintList = ColorStateList.valueOf(Color.RED)
@@ -315,6 +323,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
 
+            // ★修正: 解像度が選択されている場合はそれを適用する
             val resStrategy = if (selectedResolution != null) {
                 ResolutionStrategy(selectedResolution!!, ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER)
             } else {
@@ -340,7 +349,7 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
             try {
                 cameraProvider.unbindAll()
                 camera = cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
-                updateResolutionText()
+                updateResolutionText() // ★追加: 解像度テキストの更新
             } catch (e: Exception) { 
                 Log.e(TAG, "Bind fail", e)
                 Toast.makeText(this, "カメラの起動に失敗しました", Toast.LENGTH_SHORT).show()
@@ -348,11 +357,12 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    // ★追加: 解像度表示の更新
     private fun updateResolutionText() {
         val resolution = imageCapture?.resolutionInfo?.resolution
         runOnUiThread {
             if (resolution != null) {
-                resTextView.text = "Res: ${resolution.width}x${resolution.height}"
+                resTextView.text = "解像度: ${resolution.width}x${resolution.height}"
             }
         }
     }
@@ -383,16 +393,13 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
             .setMetadata(metadata)
             .build()
 
-        val captureStartTime = System.currentTimeMillis()
-
         ic.takePicture(outputOptions, ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onError(e: ImageCaptureException) { 
                     Log.e(TAG, "Capture fail: ${e.message}")
                     runOnUiThread {
                         Toast.makeText(baseContext, "撮影エラー", Toast.LENGTH_SHORT).show()
-                        processingCount.decrementAndGet()
-                        updateDoneButtonText()
+                        checkAndCompleteProcessing(success = false)
                         isCapturingInProgress = false
                         updateStabilityUI(stabilityBar.progress)
                     }
@@ -404,16 +411,14 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
                             updateStabilityUI(stabilityBar.progress)
                         }, 500)
                     }
-
                     cameraExecutor.execute {
-                        processCapturedImage(photoFile, captureStartTime)
+                        processCapturedImage(photoFile)
                     }
                 }
             })
     }
 
-    private fun processCapturedImage(file: File, captureStartTime: Long) {
-        val procStartTime = System.currentTimeMillis()
+    private fun processCapturedImage(file: File) {
         var originalBitmap: Bitmap? = null
         var rotatedBitmap: Bitmap? = null
         var croppedBitmap: Bitmap? = null
@@ -436,22 +441,12 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
             }
 
             if (maskMat != null) {
-                // ★修正: デバッグ画像の保存先もアプリ専用領域（filesDir）に変更
-                val debugDir = File(filesDir, "debug_crop").apply { mkdirs() }
-                val debugSavePath = File(debugDir, "debug_${file.name}").absolutePath
-
-                croppedBitmap = DocumentCropper.processFullPipeline(rotatedBitmap!!, maskMat!!, debugSavePath)
-                // ★修正: 内部ストレージの場合はMediaScannerは機能しないため削除
-                // MediaScannerConnection.scanFile(this, arrayOf(debugSavePath), null, null)
+                croppedBitmap = DocumentCropper.processFullPipeline(rotatedBitmap!!, maskMat!!)
             }
             
             val sourceForEnhancement = croppedBitmap ?: rotatedBitmap
             
-            enhancedBitmap = if (mode == "product_list") {
-                GeminiDocumentCropper.applyGeminiFilter(sourceForEnhancement!!)
-            } else {
-                DocumentCropper.applyEnhancedFilter(sourceForEnhancement!!)
-            }
+            enhancedBitmap = DocumentCropper.applyGeminiFilter(sourceForEnhancement!!)
             
             if (enhancedBitmap != sourceForEnhancement) {
                 if (sourceForEnhancement == croppedBitmap) croppedBitmap?.recycle()
@@ -466,9 +461,6 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
                 capturedPaths.add(file.absolutePath)
             }
 
-            val procEndTime = System.currentTimeMillis()
-            Log.d(TAG, "[Perf] Total Turnaround: ${procEndTime - captureStartTime}ms")
-
         } catch (e: Exception) {
             Log.e(TAG, "Process failed", e)
             runOnUiThread { 
@@ -481,8 +473,17 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
             enhancedBitmap?.recycle()
             maskMat?.release()
             
-            processingCount.decrementAndGet()
-            runOnUiThread { updateDoneButtonText() }
+            checkAndCompleteProcessing(success = true)
+        }
+    }
+
+    private fun checkAndCompleteProcessing(success: Boolean) {
+        val remaining = processingCount.decrementAndGet()
+        runOnUiThread { 
+            updateDoneButtonText()
+            if (isWaitingForProcessing && remaining == 0) {
+                finishWithResult()
+            }
         }
     }
     
@@ -510,30 +511,17 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
     private fun updateDoneButtonText() {
         runOnUiThread { 
             val count = capturedPaths.size
-            val remaining = processingCount.get()
-            if (remaining > 0) {
-                doneButton.text = "完了 ($count) [処理中:$remaining]"
-                doneButton.isEnabled = true
-            } else {
-                doneButton.text = "完了 ($count)"
-                doneButton.isEnabled = true
-            }
+            doneButton.text = "完了 ($count)"
         }
     }
 
     private fun finishWithResult() {
-        if (processingCount.get() > 0) {
-            Toast.makeText(this, "画像処理が終わるまでお待ちください...", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
         val intent = Intent()
         intent.putStringArrayListExtra("captured_paths", capturedPaths)
         setResult(RESULT_OK, intent)
         finish()
     }
 
-    // ★修正: 保存先をアプリ専用領域（filesDir）に完全固定。権限不要になります。
     private fun getOutputDirectory(): File {
         val outputDir = File(filesDir, "AiScanApp").apply { mkdirs() }
         return outputDir
@@ -551,7 +539,6 @@ class CameraActivity : AppCompatActivity(), SensorEventListener {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    // ★修正: 審査でリジェクトされるストレージ権限を完全に削除し、カメラ権限のみを要求するように変更
     private fun getRequiredPermissions(): Array<String> {
         return arrayOf(Manifest.permission.CAMERA)
     }

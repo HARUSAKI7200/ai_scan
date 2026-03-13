@@ -8,9 +8,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../database/app_database.dart';
 import '../templates/templates_tab.dart'; // templatesStreamProvider
 import '../../utils/scan_helper.dart';
-
-// 絶対に減らない累計スキャン回数を取得するプロバイダーをインポート
 import 'scan_count_provider.dart';
+
+// ★追加: お知らせ機能と通知一覧画面をインポート
+import 'notice_provider.dart';
+import 'notice_list_page.dart';
 
 class HomeTab extends ConsumerWidget {
   const HomeTab({super.key});
@@ -41,11 +43,11 @@ class HomeTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // テンプレート一覧の取得
     final templatesAsync = ref.watch(templatesStreamProvider);
-    
-    // 履歴の数ではなく、SharedPreferencesに保存された「累計スキャン回数」を取得する
     final totalScanCount = ref.watch(scanCountProvider);
+    
+    // ★追加: 未読の通知があるかどうかを監視
+    final hasUnread = ref.watch(hasUnreadNoticeProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -54,18 +56,43 @@ class HomeTab extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings, color: Color(0xFF1E293B)),
-            onPressed: () {
-              // TODO: 設定画面へ
-            },
+          // ★変更: 歯車アイコンから、バッジ付きのベルアイコンに変更
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none, color: Color(0xFF1E293B), size: 28),
+                onPressed: () {
+                  // 通知一覧画面へ遷移
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const NoticeListPage()),
+                  );
+                },
+              ),
+              // 未読がある場合のみ赤ポチを表示
+              if (hasUnread)
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack),
+                ),
+            ],
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
-            // リフレッシュ処理が必要ならここに書く
+            // スワイプ更新時に通知も再取得
+            ref.invalidate(activeNoticesProvider);
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -96,7 +123,6 @@ class HomeTab extends ConsumerWidget {
                                   style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), height: 1.0),
                                 ),
                                 const SizedBox(width: 8),
-                                // ★修正: TextStyleのpaddingを削除し、Paddingウィジェットで包みました
                                 const Padding(
                                   padding: EdgeInsets.only(bottom: 6.0),
                                   child: Text(
@@ -176,7 +202,6 @@ class HomeTab extends ConsumerWidget {
                         return _buildGlassCard(
                           child: InkWell(
                             borderRadius: BorderRadius.circular(24),
-                            // 共通のScanHelperを呼び出す
                             onTap: () => ScanHelper.startScan(context, ref, template),
                             child: Padding(
                               padding: const EdgeInsets.all(16.0),
@@ -213,7 +238,7 @@ class HomeTab extends ConsumerWidget {
                   },
                 ),
                 
-                const SizedBox(height: 100), // ボトムナビゲーションバーの裏に隠れないための余白
+                const SizedBox(height: 100), 
               ],
             ),
           ),

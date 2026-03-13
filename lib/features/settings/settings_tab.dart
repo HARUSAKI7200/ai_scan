@@ -4,8 +4,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'privacy_policy_page.dart';
-// ★追加: 作成した利用規約画面をインポート
 import 'terms_of_service_page.dart';
+// ★追加: 使い方画面をインポート
+import 'how_to_use_page.dart';
 
 class SettingsTab extends StatelessWidget {
   const SettingsTab({super.key});
@@ -64,14 +65,19 @@ class SettingsTab extends StatelessWidget {
           _buildGlassCard(
             child: Column(
               children: [
+                // ★修正: 使い方画面への遷移を追加
                 ListTile(
                   leading: const Icon(Icons.info_outline),
                   title: const Text('アプリの使い方'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const HowToUsePage()),
+                    );
+                  },
                 ),
                 Divider(height: 1, color: Colors.white.withOpacity(0.5)),
-                // ★修正: 利用規約画面へ遷移するように設定
                 ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: const Text('利用規約'),

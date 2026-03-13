@@ -1,9 +1,8 @@
-// app/src/main/kotlin/com/example/nifuda_gpt_app_fixed/utils/DocumentCropper.kt
+// app/src/main/kotlin/com/example/ai_scan/utils/DocumentCropper.kt
 
 package com.example.ai_scan.utils
 
 import android.graphics.Bitmap
-import android.util.Log
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
@@ -28,11 +27,13 @@ object DocumentCropper {
         return bmp
     }
 
-    fun deskewImage(bitmap: Bitmap): Bitmap {
-        return bitmap
-    }
-
-    fun applyEnhancedFilter(bitmap: Bitmap): Bitmap {
+    /**
+     * Gemini専用フィルタ (統合版)
+     * ・グレースケール化：しない（カラー情報を維持して認識精度向上）
+     * ・コントラスト強調：しない（自然な画質を維持）
+     * ・リサイズ：長辺3500px制限
+     */
+    fun applyGeminiFilter(bitmap: Bitmap): Bitmap {
         if (bitmap.isRecycled) return bitmap
         val srcMat = Mat()
         Utils.bitmapToMat(bitmap, srcMat)
@@ -40,6 +41,7 @@ object DocumentCropper {
         val targetMax = 3500.0
         val currentMax = maxOf(srcMat.width(), srcMat.height()).toDouble()
         val scaleFactor = if (currentMax > targetMax) targetMax / currentMax else 1.0
+        
         val resizedMat = Mat()
         if (scaleFactor < 1.0) {
             Imgproc.resize(srcMat, resizedMat, Size(), scaleFactor, scaleFactor, Imgproc.INTER_LINEAR)
@@ -48,59 +50,43 @@ object DocumentCropper {
             srcMat.copyTo(resizedMat)
             srcMat.release()
         }
-
-        val grayMat = Mat()
-        if (resizedMat.channels() == 4) Imgproc.cvtColor(resizedMat, grayMat, Imgproc.COLOR_RGBA2GRAY)
-        else if (resizedMat.channels() == 3) Imgproc.cvtColor(resizedMat, grayMat, Imgproc.COLOR_RGB2GRAY)
-        else resizedMat.copyTo(grayMat)
         
+        val outBitmap = safeMatToBitmap(resizedMat)
         resizedMat.release()
-
-        val outBitmap = safeMatToBitmap(grayMat)
-        grayMat.release()
-        
         return outBitmap
     }
 
     /**
-     * ★ 黒塗りマスク・凸包エッジ交差法 (Masked Hull Intersection Warp) - 精度向上＆黒塗りなし出力版
-     * 1. 検出には黒塗り画像(maskedSrc)を使用し、高精度に輪郭を特定
-     * 2. 切り出しには元画像(srcMat)を使用し、背景除去のアーティファクトを回避
+     * 黒塗りマスク・凸包エッジ交差法 (Masked Hull Intersection Warp)
+     * デバッグコードを完全削除した最適化版
      */
-    fun processFullPipeline(srcBitmap: Bitmap, maskMat: Mat, debugSavePath: String? = null): Bitmap? {
+    fun processFullPipeline(srcBitmap: Bitmap, maskMat: Mat): Bitmap? {
         if (srcBitmap.isRecycled || maskMat.empty()) return null
 
         val srcMat = Mat()
         Utils.bitmapToMat(srcBitmap, srcMat)
-        // srcMatはRGB/ARGB形式で保持しておく
 
         if (srcMat.channels() != 4) {
             Imgproc.cvtColor(srcMat, srcMat, Imgproc.COLOR_RGB2RGBA)
         }
 
-        // 1. マスクの整形 (分離重視)
-        // MORPH_CLOSE (結合) ではなく MORPH_OPEN (分離) を採用し、重なった紙を切り離す
         val processedMask = Mat()
         val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
         Imgproc.morphologyEx(maskMat, processedMask, Imgproc.MORPH_OPEN, kernel)
 
-        // 2. 背景除去 (Masking) - 黒塗り (検出用)
         val maskedSrc = Mat(srcMat.size(), srcMat.type(), Scalar(0.0, 0.0, 0.0, 255.0))
         srcMat.copyTo(maskedSrc, processedMask)
 
-        // 3. 輪郭抽出と選択ロジック (黒塗り画像から検出)
         val contours = mutableListOf<MatOfPoint>()
         Imgproc.findContours(processedMask, contours, Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
         
-        // 単純な最大面積ではなく、形状（四角形らしさ・凸性）を加味したベストな輪郭を選ぶ
         var bestContour: MatOfPoint? = null
         var maxScore = 0.0
 
         for (contour in contours) {
             val area = Imgproc.contourArea(contour)
-            if (area < 1000) continue // ノイズ除去
+            if (area < 1000) continue 
 
-            // 近似処理
             val mat2f = MatOfPoint2f(*contour.toArray())
             val peri = Imgproc.arcLength(mat2f, true)
             val approx = MatOfPoint2f()
@@ -110,7 +96,6 @@ object DocumentCropper {
             val points = MatOfPoint(*approx.toArray())
             val isConvex = Imgproc.isContourConvex(points)
 
-            // スコアリング: 面積をベースに、四角形・凸形状ならボーナス
             var score = area
             if (vertexCount == 4) score *= 1.2
             if (isConvex) score *= 1.1
@@ -125,59 +110,40 @@ object DocumentCropper {
             points.release()
         }
 
-        val largestContour = bestContour
         var resultBitmap: Bitmap? = null
 
-        if (largestContour != null) {
-            // 4. 凸包 (Convex Hull)
+        if (bestContour != null) {
             val hullIndices = MatOfInt()
-            Imgproc.convexHull(largestContour, hullIndices)
-            val contourPoints = largestContour.toArray()
+            Imgproc.convexHull(bestContour, hullIndices)
+            val contourPoints = bestContour.toArray()
             val hullPoints = hullIndices.toArray().map { contourPoints[it] }
             val hullContour = MatOfPoint2f(*hullPoints.toTypedArray())
 
-            // 5. 基準角度の取得
             val minRect = Imgproc.minAreaRect(hullContour)
             val baseAngle = minRect.angle
 
-            // 6. 最良の4辺を抽出
             val bestLines = findBestHullLines(hullPoints, baseAngle, srcMat.width(), srcMat.height())
 
             if (bestLines != null) {
-                // 7. 交点計算 (仮想四隅)
-                val tl = computeIntersection(bestLines[0], bestLines[2]) // Top x Left
-                val tr = computeIntersection(bestLines[0], bestLines[3]) // Top x Right
-                val br = computeIntersection(bestLines[1], bestLines[3]) // Bottom x Right
-                val bl = computeIntersection(bestLines[1], bestLines[2]) // Bottom x Left
+                val tl = computeIntersection(bestLines[0], bestLines[2])
+                val tr = computeIntersection(bestLines[0], bestLines[3])
+                val br = computeIntersection(bestLines[1], bestLines[3])
+                val bl = computeIntersection(bestLines[1], bestLines[2])
 
                 if (tl != null && tr != null && br != null && bl != null) {
                     val corners = arrayOf(tl, tr, br, bl)
-                    
-                    // ソート: 縦は縦、横は横で正しく出力されるように並べ替え
                     val sortedCorners = sortCorners(corners)
-
-                    if (debugSavePath != null) {
-                        // デバッグ画像は黒塗り後のmaskedSrcに線を描画して保存（検出状況の確認用）
-                        saveDebugImage(maskedSrc, sortedCorners, bestLines, debugSavePath)
-                    }
-
-                    // 8. 透視変換 (Warp) - ★ここを変更★
-                    // 検出された座標(sortedCorners)を使って、黒塗り前の「srcMat」から画像を切り出す
                     resultBitmap = warpPerspective(srcMat, sortedCorners)
-
                 } else {
-                    // 4点特定失敗時は、黒塗りなしの画像から最小外接矩形で切り出す
                     resultBitmap = fallbackWarp(srcMat, minRect)
                 }
             } else {
-                // 4辺特定失敗時は、黒塗りなしの画像から最小外接矩形で切り出す
                 resultBitmap = fallbackWarp(srcMat, minRect)
             }
             
             hullIndices.release()
             hullContour.release()
         } else {
-            // 輪郭が見つからなかった場合、元画像をそのまま返す（または黒塗りなしBitmap）
             resultBitmap = srcBitmap
         }
 
@@ -312,18 +278,5 @@ object DocumentCropper {
         val bmp = safeMatToBitmap(dst)
         dst.release(); transform.release(); srcMat.release(); dstMat.release()
         return bmp
-    }
-
-    private fun saveDebugImage(srcMat: Mat, corners: Array<Point>, lines: Array<DoubleArray>, savePath: String) {
-        try {
-            val debugMat = srcMat.clone()
-            for (i in 0..3) {
-                Imgproc.line(debugMat, corners[i], corners[(i + 1) % 4], Scalar(0.0, 255.0, 0.0, 255.0), 5)
-                Imgproc.circle(debugMat, corners[i], 20, Scalar(255.0, 0.0, 0.0, 255.0), -1)
-            }
-            val bmp = safeMatToBitmap(debugMat)
-            java.io.FileOutputStream(savePath).use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 90, out) }
-            debugMat.release(); bmp.recycle()
-        } catch (e: Exception) { Log.e("DocumentCropper", "Debug error: ${e.message}") }
     }
 }

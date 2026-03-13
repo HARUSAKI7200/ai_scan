@@ -1,13 +1,10 @@
-// app/src/main/kotlin/com/example/nifuda_gpt_app_fixed/utils/DocumentCornerDetector.kt
+// app/src/main/kotlin/com/example/ai_scan/utils/DocumentCornerDetector.kt
 
 package com.example.ai_scan.utils
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.os.Environment
-import android.util.Log
-import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -15,15 +12,10 @@ import org.opencv.core.Point
 import org.opencv.core.Scalar
 import org.opencv.imgproc.Imgproc
 import org.tensorflow.lite.Interpreter 
-import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -36,7 +28,6 @@ class DocumentCornerDetector(private val context: Context) {
     private val CLASS_INDEX_DOCUMENT = 0 
     private val IDX_CLASS_START = 4
 
-    // ★ 修正: 閾値を 0.85 に設定して、自信度の高い「一番上の紙」のみを厳選する
     private val MASK_THRESHOLD = 0.85f
 
     init {
@@ -67,7 +58,6 @@ class DocumentCornerDetector(private val context: Context) {
         val bestAnchorIndex = findBestAnchor(outputDetect[0])
         if (bestAnchorIndex == -1) return null
 
-        // BBox計算
         val cx = outputDetect[0][0][bestAnchorIndex] * INPUT_SIZE
         val cy = outputDetect[0][1][bestAnchorIndex] * INPUT_SIZE
         val w = outputDetect[0][2][bestAnchorIndex] * INPUT_SIZE
@@ -86,7 +76,6 @@ class DocumentCornerDetector(private val context: Context) {
         val safeX2 = max(1.0, min(x2, originalWidth - 1.0)).toInt()
         val safeY2 = max(1.0, min(y2, originalHeight - 1.0)).toInt()
 
-        // マスク復元
         val coeffs = FloatArray(32)
         for (i in 0 until 32) {
             coeffs[i] = outputDetect[0][5 + i][bestAnchorIndex]
@@ -95,7 +84,6 @@ class DocumentCornerDetector(private val context: Context) {
         outputProtoBuffer.rewind()
         val protoFloatBuffer = outputProtoBuffer.asFloatBuffer()
 
-        // 160x160 確率マップ
         val mask160 = Mat(160, 160, CvType.CV_32F)
         val maskData = FloatArray(160 * 160)
         for (y in 0 until 160) {
@@ -109,19 +97,13 @@ class DocumentCornerDetector(private val context: Context) {
         }
         mask160.put(0, 0, maskData)
 
-        // リサイズ
         val mask640 = Mat()
         Imgproc.resize(mask160, mask640, org.opencv.core.Size(INPUT_SIZE.toDouble(), INPUT_SIZE.toDouble()))
 
-        // ヒートマップ保存（デバッグ用）
-        saveHeatmapDebug(mask640, bitmap, info)
-
-        // 閾値処理で二値化
         val binaryMask640 = Mat()
         Imgproc.threshold(mask640, binaryMask640, MASK_THRESHOLD.toDouble(), 255.0, Imgproc.THRESH_BINARY)
         binaryMask640.convertTo(binaryMask640, CvType.CV_8U)
 
-        // Letterbox除去
         val roiX = max(0, min(info.padX.toInt(), INPUT_SIZE - 1))
         val roiY = max(0, min(info.padY.toInt(), INPUT_SIZE - 1))
         val roiW = max(1, min((INPUT_SIZE - 2 * info.padX).toInt(), INPUT_SIZE - roiX))
@@ -131,54 +113,16 @@ class DocumentCornerDetector(private val context: Context) {
         val finalMask = Mat()
         Imgproc.resize(croppedMask640, finalMask, org.opencv.core.Size(originalWidth, originalHeight))
 
-        // ノイズ除去: BBoxの外側は強制的に黒にする
         val bboxMask = Mat.zeros(finalMask.size(), CvType.CV_8U)
         if (safeX1 < safeX2 && safeY1 < safeY2) {
             Imgproc.rectangle(bboxMask, Point(safeX1.toDouble(), safeY1.toDouble()), Point(safeX2.toDouble(), safeY2.toDouble()), Scalar(255.0), -1)
         }
         Core.bitwise_and(finalMask, bboxMask, finalMask)
 
-        // メモリ解放
         mask160.release(); mask640.release(); binaryMask640.release()
         croppedMask640.release(); bboxMask.release()
 
         return finalMask
-    }
-
-    private fun saveHeatmapDebug(maskProb: Mat, originalBitmap: Bitmap, info: LetterboxInfo) {
-        try {
-            val prob8u = Mat()
-            maskProb.convertTo(prob8u, CvType.CV_8U, 255.0)
-            val heatmap = Mat()
-            Imgproc.applyColorMap(prob8u, heatmap, Imgproc.COLORMAP_JET)
-
-            val resized = Bitmap.createScaledBitmap(originalBitmap, (originalBitmap.width * info.ratio).toInt(), (originalBitmap.height * info.ratio).toInt(), true)
-            val canvasBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(canvasBitmap)
-            canvas.drawColor(android.graphics.Color.BLACK)
-            canvas.drawBitmap(resized, info.padX, info.padY, null)
-            
-            val srcMat = Mat()
-            Utils.bitmapToMat(canvasBitmap, srcMat)
-            Imgproc.cvtColor(srcMat, srcMat, Imgproc.COLOR_RGBA2RGB)
-
-            val overlay = Mat()
-            Core.addWeighted(srcMat, 0.6, heatmap, 0.4, 0.0, overlay)
-
-            val dcimDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-            val debugDir = File(dcimDir, "debug_heatmap").apply { mkdirs() }
-            val timeStamp = SimpleDateFormat("HH-mm-ss-SSS", Locale.US).format(System.currentTimeMillis())
-            val file = File(debugDir, "heatmap_$timeStamp.jpg")
-            
-            val outBmp = Bitmap.createBitmap(overlay.width(), overlay.height(), Bitmap.Config.ARGB_8888)
-            Utils.matToBitmap(overlay, outBmp)
-            
-            FileOutputStream(file).use { out ->
-                outBmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
-            prob8u.release(); heatmap.release(); srcMat.release(); overlay.release()
-            resized.recycle(); canvasBitmap.recycle(); outBmp.recycle()
-        } catch (e: Exception) {}
     }
 
     private fun findBestAnchor(detectionData: Array<FloatArray>): Int {
