@@ -3,7 +3,7 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ★これを追加しました (HapticFeedback用)
+import 'package:flutter/services.dart'; 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:intl/intl.dart';
@@ -13,14 +13,12 @@ import '../../database/app_database.dart';
 import '../../main.dart'; // databaseProvider
 import '../scan/scan_result_page.dart'; 
 
-// 履歴とテンプレート名を結合して保持するクラス
 class ScanHistoryWithTemplate {
   final ScanHistory history;
   final String templateName;
   ScanHistoryWithTemplate({required this.history, required this.templateName});
 }
 
-// データベースから履歴とテンプレートを結合して取得するプロバイダー
 final scanHistoriesProvider = StreamProvider<List<ScanHistoryWithTemplate>>((ref) {
   final db = ref.watch(databaseProvider);
   
@@ -41,7 +39,6 @@ final scanHistoriesProvider = StreamProvider<List<ScanHistoryWithTemplate>>((ref
   });
 });
 
-// 保存されている画像の合計サイズ（キャッシュ容量）を計算するプロバイダー
 final cacheSizeProvider = Provider<String>((ref) {
   final historiesAsync = ref.watch(scanHistoriesProvider);
   
@@ -64,7 +61,6 @@ final cacheSizeProvider = Provider<String>((ref) {
   );
 });
 
-// 選択状態を管理するため ConsumerStatefulWidget に変更
 class HistoryTab extends ConsumerStatefulWidget {
   const HistoryTab({super.key});
 
@@ -73,11 +69,29 @@ class HistoryTab extends ConsumerStatefulWidget {
 }
 
 class _HistoryTabState extends ConsumerState<HistoryTab> {
-  // 選択モードの管理
   bool _isSelectionMode = false;
-  final Set<int> _selectedIds = {}; // 選択された履歴のIDを保持
+  final Set<int> _selectedIds = {}; 
+  
+  // ★追加: 検索機能用コントローラー
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
-  // 選択モードを解除する
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _clearSelection() {
     setState(() {
       _isSelectionMode = false;
@@ -109,7 +123,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
     );
   }
 
-  // 1件削除用のメソッド
   Future<void> _deleteSingleHistory(ScanHistory history) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -133,7 +146,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
     }
   }
 
-  // 選択した複数項目を一括削除するメソッド
   Future<void> _deleteSelectedHistories(List<ScanHistoryWithTemplate> allHistories) async {
     if (_selectedIds.isEmpty) return;
 
@@ -155,23 +167,20 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
     );
 
     if (confirm == true) {
-      // 選択されたIDに合致するHistoryのリストを抽出
       final targetsToDelete = allHistories
           .where((item) => _selectedIds.contains(item.history.id))
           .map((item) => item.history)
           .toList();
       
       await _executeDeletion(targetsToDelete);
-      _clearSelection(); // 削除後に選択モードを解除
+      _clearSelection(); 
     }
   }
 
-  // 物理削除とDB削除を実行する共通処理
   Future<void> _executeDeletion(List<ScanHistory> targets) async {
     final db = ref.read(databaseProvider);
     
     for (final history in targets) {
-      // 1. 画像ファイルを端末から物理削除
       try {
         final file = File(history.imagePath);
         if (file.existsSync()) {
@@ -180,7 +189,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
       } catch (e) {
         debugPrint('画像削除エラー: $e');
       }
-      // 2. データベースから履歴レコードを削除
       await (db.delete(db.scanHistories)..where((t) => t.id.equals(history.id))).go();
     }
 
@@ -194,28 +202,25 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
   @override
   Widget build(BuildContext context) {
     final historiesAsync = ref.watch(scanHistoriesProvider);
-    // キャッシュサイズを取得
     final cacheSize = ref.watch(cacheSizeProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // ★変更: 選択モード時はAppBarの表示を切り替える
       appBar: _isSelectionMode
           ? AppBar(
-              backgroundColor: const Color(0xFF667EEA).withOpacity(0.1), // 選択中とわかるように少し色を付ける
+              backgroundColor: const Color(0xFF667EEA).withOpacity(0.1), 
               leading: IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: _clearSelection,
               ),
               title: Text('${_selectedIds.length}件 選択中', style: const TextStyle(fontSize: 18)),
               actions: [
-                // すべて選択ボタン
                 TextButton(
                   onPressed: () {
                     final allHistories = historiesAsync.value ?? [];
                     setState(() {
                       if (_selectedIds.length == allHistories.length) {
-                        _selectedIds.clear(); // すでに全選択なら解除
+                        _selectedIds.clear(); 
                       } else {
                         _selectedIds.addAll(allHistories.map((e) => e.history.id));
                       }
@@ -224,7 +229,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                   style: TextButton.styleFrom(foregroundColor: const Color(0xFF1E293B)),
                   child: const Text('すべて選択'),
                 ),
-                // 一括削除（ゴミ箱）ボタン
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: _selectedIds.isEmpty
@@ -248,7 +252,27 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
             ),
       body: Column(
         children: [
-          // キャッシュ容量の表示エリア
+          // ★追加: 検索・フィルタリングUI
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: _buildGlassCard(
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'テンプレート名やテキストで検索...',
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFF667EEA)),
+                  suffixIcon: _searchQuery.isNotEmpty 
+                      ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear())
+                      : null,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ).animate().fade().slideY(begin: -0.1, end: 0),
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
             child: Row(
@@ -271,7 +295,16 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
             child: historiesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Center(child: Text('エラーが発生しました: $err')),
-              data: (histories) {
+              data: (allHistories) {
+                // ★追加: 検索クエリによるフィルタリング適用
+                final histories = _searchQuery.isEmpty 
+                    ? allHistories 
+                    : allHistories.where((item) {
+                        final templateMatch = item.templateName.toLowerCase().contains(_searchQuery);
+                        final resultMatch = item.history.resultJson.toLowerCase().contains(_searchQuery);
+                        return templateMatch || resultMatch;
+                      }).toList();
+
                 if (histories.isEmpty) {
                   return Center(
                     child: Padding(
@@ -282,16 +315,11 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.history, size: 64, color: Colors.grey),
+                              Icon(Icons.search_off, size: 64, color: Colors.grey),
                               SizedBox(height: 16),
                               Text(
-                                '履歴はまだありません',
+                                '一致する履歴がありません',
                                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'スキャンを行うとここに保存されます',
-                                style: TextStyle(color: Color(0xFF475569)),
                               ),
                             ],
                           ),
@@ -317,21 +345,18 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                       child: _buildGlassCard(
                         child: InkWell(
                           borderRadius: BorderRadius.circular(24),
-                          // ★追加: 長押しで選択モードに入る
                           onLongPress: () {
                             setState(() {
                               _isSelectionMode = true;
                               _selectedIds.add(history.id);
                             });
-                            HapticFeedback.lightImpact(); // 少しブルッとさせる
+                            HapticFeedback.lightImpact(); 
                           },
-                          // ★変更: タップ時の挙動（選択モード中は選択切り替え、通常時は詳細画面へ）
                           onTap: () {
                             if (_isSelectionMode) {
                               setState(() {
                                 if (isSelected) {
                                   _selectedIds.remove(history.id);
-                                  // 全て選択解除されたら通常モードに戻る
                                   if (_selectedIds.isEmpty) _isSelectionMode = false;
                                 } else {
                                   _selectedIds.add(history.id);
@@ -347,7 +372,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                             }
                           },
                           child: Container(
-                            // 選択中はそのアイテムの背景色を少し変える
                             decoration: BoxDecoration(
                               color: isSelected ? const Color(0xFF667EEA).withOpacity(0.15) : Colors.transparent,
                               borderRadius: BorderRadius.circular(24),
@@ -355,7 +379,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                             padding: const EdgeInsets.all(16.0),
                             child: Row(
                               children: [
-                                // ★追加: 選択モード時のみ左端にチェックボックスを表示
                                 if (_isSelectionMode) ...[
                                   Checkbox(
                                     value: isSelected,
@@ -375,7 +398,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                                   const SizedBox(width: 8),
                                 ],
 
-                                // サムネイル画像
                                 Container(
                                   width: 60,
                                   height: 60,
@@ -393,7 +415,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                                 ),
                                 const SizedBox(width: 16),
                                 
-                                // テキスト情報
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,7 +444,6 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                                   ),
                                 ),
                                 
-                                // ★変更: 選択モード中は右端のメニューを隠す
                                 if (!_isSelectionMode)
                                   Row(
                                     mainAxisSize: MainAxisSize.min,

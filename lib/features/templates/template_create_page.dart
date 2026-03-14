@@ -6,12 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' as drift;
 
-// ★ インポートパスを修正（../ から ../../ へ）
 import '../../database/app_database.dart';
 import '../../main.dart'; 
 
 class TemplateCreatePage extends ConsumerStatefulWidget {
-  const TemplateCreatePage({super.key});
+  final ExtractionTemplate? templateToEdit;
+  final bool isDuplicate; // trueなら新規作成扱い（複製）、falseなら上書き保存（編集）
+
+  const TemplateCreatePage({
+    super.key, 
+    this.templateToEdit,
+    this.isDuplicate = false,
+  });
 
   @override
   ConsumerState<TemplateCreatePage> createState() => _TemplateCreatePageState();
@@ -22,6 +28,31 @@ class _TemplateCreatePageState extends ConsumerState<TemplateCreatePage> {
   final _fieldsController = TextEditingController();
   
   String _selectedMode = 'list'; // 'list' or 'text'
+
+  @override
+  void initState() {
+    super.initState();
+    // 編集・複製の場合は初期値をセット
+    if (widget.templateToEdit != null) {
+      _nameController.text = widget.isDuplicate 
+          ? '${widget.templateToEdit!.name} のコピー' 
+          : widget.templateToEdit!.name;
+      
+      try {
+        final fields = jsonDecode(widget.templateToEdit!.targetFieldsJson) as List;
+        _fieldsController.text = fields.join(', ');
+      } catch (_) {}
+
+      if (widget.templateToEdit!.customInstruction != null) {
+        try {
+          final decoded = jsonDecode(widget.templateToEdit!.customInstruction!);
+          if (decoded is Map && decoded['mode'] == 'text') {
+            _selectedMode = 'text';
+          }
+        } catch (_) {}
+      }
+    }
+  }
 
   Future<void> _saveTemplate() async {
     FocusScope.of(context).unfocus();
@@ -54,18 +85,31 @@ class _TemplateCreatePageState extends ConsumerState<TemplateCreatePage> {
     };
 
     final db = ref.read(databaseProvider);
-    await db.into(db.extractionTemplates).insert(
-      ExtractionTemplatesCompanion.insert(
-        name: name,
-        targetFieldsJson: jsonEncode(fields),
-        customInstruction: drift.Value(jsonEncode(instructionData)),
-      ),
-    );
+
+    if (widget.templateToEdit != null && !widget.isDuplicate) {
+      // 編集（更新）
+      await (db.update(db.extractionTemplates)..where((t) => t.id.equals(widget.templateToEdit!.id))).write(
+        ExtractionTemplatesCompanion(
+          name: drift.Value(name),
+          targetFieldsJson: drift.Value(jsonEncode(fields)),
+          customInstruction: drift.Value(jsonEncode(instructionData)),
+        ),
+      );
+    } else {
+      // 新規作成 または 複製
+      await db.into(db.extractionTemplates).insert(
+        ExtractionTemplatesCompanion.insert(
+          name: name,
+          targetFieldsJson: jsonEncode(fields),
+          customInstruction: drift.Value(jsonEncode(instructionData)),
+        ),
+      );
+    }
 
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('テンプレートを作成しました')),
+        SnackBar(content: Text(widget.templateToEdit != null && !widget.isDuplicate ? 'テンプレートを更新しました' : 'テンプレートを作成しました')),
       );
     }
   }
@@ -103,6 +147,9 @@ class _TemplateCreatePageState extends ConsumerState<TemplateCreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isEditMode = widget.templateToEdit != null && !widget.isDuplicate;
+    final appBarTitle = widget.isDuplicate ? 'テンプレートを複製' : (isEditMode ? 'テンプレート編集' : '新規テンプレート設定');
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => FocusScope.of(context).unfocus(),
@@ -122,7 +169,7 @@ class _TemplateCreatePageState extends ConsumerState<TemplateCreatePage> {
         child: Scaffold(
           backgroundColor: Colors.transparent, 
           appBar: AppBar(
-            title: const Text('新規テンプレート設定'),
+            title: Text(appBarTitle),
             backgroundColor: Colors.transparent, 
             elevation: 0,
             actions: [
@@ -213,7 +260,7 @@ class _TemplateCreatePageState extends ConsumerState<TemplateCreatePage> {
                       height: 56,
                       child: ElevatedButton(
                         onPressed: _saveTemplate,
-                        child: const Text('この内容で作成する', style: TextStyle(fontSize: 16)),
+                        child: Text(isEditMode ? '更新する' : 'この内容で作成する', style: const TextStyle(fontSize: 16)),
                       ),
                     ),
                     const SizedBox(height: 80), 

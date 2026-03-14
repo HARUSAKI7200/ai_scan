@@ -21,8 +21,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../database/app_database.dart';
 import '../../main.dart'; 
 
-// ★追加: 出力フロー管理用の列挙型
-enum ExportFormat { text, pdf, word, excel, image }
+enum ExportFormat { text, pdf, word, excel, csv, image }
 enum ExportAction { save, share }
 
 class ScanResultPage extends ConsumerStatefulWidget {
@@ -41,6 +40,9 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
   List<String> _headers = [];
   TextEditingController? _textController;
   bool _isEditing = false;
+  
+  // 各行の「要確認フラグ（低信頼度）」を管理するリスト
+  List<bool> _needsReviewList = [];
 
   @override
   void initState() {
@@ -62,11 +64,13 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
       newJsonString = jsonEncode({'text': _textController!.text});
     } else {
       List<Map<String, dynamic>> updatedItems = [];
-      for (var rowControllers in _controllersList) {
+      for (int i = 0; i < _controllersList.length; i++) {
         Map<String, dynamic> rowData = {};
-        rowControllers.forEach((key, controller) {
+        _controllersList[i].forEach((key, controller) {
           rowData[key] = controller.text;
         });
+        // 保存時に要確認フラグ状態も保持させる
+        rowData['_needsReview'] = _needsReviewList[i];
         updatedItems.add(rowData);
       }
       newJsonString = jsonEncode({'items': updatedItems});
@@ -192,19 +196,14 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
 
   // --- Excel ---
   Uint8List? _generateExcelBytes(ScanHistory history) {
-    final Map<String, dynamic> resultData = jsonDecode(history.resultJson);
-    final List<dynamic> itemsList = resultData.containsKey('items') ? resultData['items'] : [resultData];
-    if (itemsList.isEmpty) return null;
+    if (_controllersList.isEmpty) return null;
 
     final excel = Excel.createExcel();
     final Sheet sheet = excel['Sheet1'];
-    final Map<String, dynamic> firstItem = itemsList.first as Map<String, dynamic>;
-    final headers = firstItem.keys.toList();
-    sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
+    sheet.appendRow(_headers.map((h) => TextCellValue(h)).toList());
 
-    for (var item in itemsList) {
-      final Map<String, dynamic> rowData = item as Map<String, dynamic>;
-      final values = headers.map((h) => rowData[h]?.toString() ?? '').map((v) => TextCellValue(v)).toList();
+    for (var rowControllers in _controllersList) {
+      final values = _headers.map((h) => TextCellValue(rowControllers[h]?.text ?? '')).toList();
       sheet.appendRow(values);
     }
     final fileBytes = excel.save();
@@ -237,6 +236,63 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
     await _markAsExported(history);
   }
 
+  // --- CSV ---
+  String? _generateCsvString() {
+    if (_controllersList.isEmpty) return null;
+    
+    String escapeCsv(String input) {
+      if (input.contains(',') || input.contains('\n') || input.contains('"')) {
+        return '"${input.replaceAll('"', '""')}"';
+      }
+      return input;
+    }
+
+    final buffer = StringBuffer();
+    // ヘッダー行
+    buffer.writeln(_headers.map(escapeCsv).join(','));
+    // データ行
+    for (var rowControllers in _controllersList) {
+      final rowStr = _headers.map((h) => escapeCsv(rowControllers[h]?.text ?? '')).join(',');
+      buffer.writeln(rowStr);
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _saveAsCsvFile(ScanHistory history, String templateName) async {
+    final csvString = _generateCsvString();
+    if (csvString == null) throw Exception('出力するデータがありません');
+    
+    // Excelで開いた時の文字化け防止のためBOM(Byte Order Mark)を付与
+    final bytes = utf8.encode(csvString);
+    final bom = [0xEF, 0xBB, 0xBF];
+    final finalBytes = Uint8List.fromList([...bom, ...bytes]);
+
+    final fileName = '${templateName}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv';
+    final outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'CSVを保存', fileName: fileName, type: FileType.custom, allowedExtensions: ['csv'], bytes: finalBytes, 
+    );
+    if (outputFile != null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSVを保存しました')));
+      await _markAsExported(history);
+    }
+  }
+
+  Future<void> _shareCsvFile(ScanHistory history, String templateName) async {
+    final csvString = _generateCsvString();
+    if (csvString == null) throw Exception('出力するデータがありません');
+
+    final bytes = utf8.encode(csvString);
+    final bom = [0xEF, 0xBB, 0xBF];
+    final finalBytes = Uint8List.fromList([...bom, ...bytes]);
+
+    final tempDir = await getTemporaryDirectory();
+    final fileName = '${templateName}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv';
+    final file = File(p.join(tempDir.path, fileName));
+    await file.writeAsBytes(finalBytes);
+    await Share.shareXFiles([XFile(file.path)], text: '$templateNameのCSVファイル');
+    await _markAsExported(history);
+  }
+
   // --- 画像 ---
   Future<void> _saveImageFile(ScanHistory history, String templateName) async {
     final sourceFile = File(history.imagePath);
@@ -261,6 +317,7 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
   // 【フロー統括メソッド】
   // ==========================================
   Future<void> _executeExport(ExportFormat format, ExportAction action, ScanHistory history, String templateName) async {
+    // ★広告フック（_showAdOrConsumeTicketPlaceholder）を削除し、直接出力処理を実行します
     try {
       switch (format) {
         case ExportFormat.text:
@@ -278,6 +335,10 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
         case ExportFormat.excel:
           if (action == ExportAction.save) await _saveAsExcelFile(history, templateName);
           else await _shareExcel(history, templateName);
+          break;
+        case ExportFormat.csv:
+          if (action == ExportAction.save) await _saveAsCsvFile(history, templateName);
+          else await _shareCsvFile(history, templateName);
           break;
         case ExportFormat.image:
           if (action == ExportAction.save) await _saveImageFile(history, templateName);
@@ -327,7 +388,6 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
     );
   }
 
-  // ★ ダイアログ内の選択肢を作る共通ウィジェット
   Widget _buildDialogOption({required IconData icon, required Color color, required String title, required VoidCallback onTap}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -354,7 +414,6 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
     );
   }
 
-  // ★ 2ステップのすりガラスダイアログを表示
   void _showExportMenu(BuildContext context, bool isTextMode, ScanHistory history, String templateName) {
     if (isTextMode && (_textController == null || _textController!.text.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('出力するテキストがありません')));
@@ -364,10 +423,9 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        int step = 1; // 1:形式選択, 2:アクション選択
+        int step = 1; 
         ExportFormat? selectedFormat;
 
-        // StatefulBuilderを使ってダイアログの中だけで状態（step）を更新する
         return StatefulBuilder(
           builder: (context, setState) {
             return Dialog(
@@ -394,7 +452,6 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
                         ),
                         const SizedBox(height: 24),
                         
-                        // --- ステップ1: 形式を選ぶ ---
                         if (step == 1) ...[
                           if (isTextMode) ...[
                             _buildDialogOption(
@@ -414,13 +471,16 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
                               icon: Icons.table_chart, color: Colors.green, title: 'Excelファイル (.xlsx)',
                               onTap: () => setState(() { selectedFormat = ExportFormat.excel; step = 2; }),
                             ),
+                            _buildDialogOption(
+                              icon: Icons.grid_on, color: Colors.teal, title: 'CSVファイル (.csv)',
+                              onTap: () => setState(() { selectedFormat = ExportFormat.csv; step = 2; }),
+                            ),
                           ],
                           _buildDialogOption(
                             icon: Icons.image, color: Colors.orange, title: '元のスキャン画像 (.jpg)',
                             onTap: () => setState(() { selectedFormat = ExportFormat.image; step = 2; }),
                           ),
                         ] 
-                        // --- ステップ2: アクション（保存or共有）を選ぶ ---
                         else ...[
                           _buildDialogOption(
                             icon: Icons.save_alt, color: const Color(0xFF667EEA), title: '端末に保存 (フォルダ選択)',
@@ -506,7 +566,8 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
                     final List<dynamic> itemsList = resultData.containsKey('items') ? resultData['items'] : [resultData];
                     if (itemsList.isNotEmpty) {
                       final firstItem = itemsList.first as Map<String, dynamic>;
-                      _headers = firstItem.keys.toList();
+                      _headers = firstItem.keys.where((k) => k != '_needsReview').toList();
+                      
                       for (var item in itemsList) {
                         final Map<String, dynamic> rowData = item as Map<String, dynamic>;
                         Map<String, TextEditingController> rowControllers = {};
@@ -514,6 +575,8 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
                           rowControllers[key] = TextEditingController(text: rowData[key]?.toString() ?? '');
                         }
                         _controllersList.add(rowControllers);
+                        // 要確認フラグの読み込み（なければfalse）
+                        _needsReviewList.add(rowData['_needsReview'] == true);
                       }
                     }
                   }
@@ -531,7 +594,6 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              // ★ 新しく作った2ステップのダイアログを呼び出す
                               onPressed: _isEditing ? null : () => _showExportMenu(context, isTextMode, history, templateName),
                               icon: const Icon(Icons.ios_share),
                               label: const Text('出力・保存'),
@@ -633,35 +695,63 @@ class _ScanResultPageState extends ConsumerState<ScanResultPage> {
                                     dataRowMaxHeight: double.infinity,
                                     headingRowColor: WidgetStateProperty.all(Colors.white.withOpacity(0.3)),
                                     columnSpacing: 24,
-                                    columns: _headers.map((h) => DataColumn(label: Text(h, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))))).toList(),
-                                    rows: _controllersList.map((rowControllers) {
+                                    columns: [
+                                      const DataColumn(label: Text('状態', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),
+                                      ..._headers.map((h) => DataColumn(label: Text(h, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))))),
+                                    ],
+                                    rows: List.generate(_controllersList.length, (index) {
+                                      final rowControllers = _controllersList[index];
+                                      final isNeedsReview = _needsReviewList[index];
                                       return DataRow(
-                                        cells: _headers.map((h) {
-                                          return DataCell(
-                                            Container(
-                                              constraints: const BoxConstraints(minWidth: 140, maxWidth: 250),
-                                              padding: const EdgeInsets.symmetric(vertical: 8),
-                                              child: TextField(
-                                                controller: rowControllers[h],
-                                                readOnly: !_isEditing,
-                                                maxLines: null, 
-                                                keyboardType: TextInputType.multiline, 
-                                                style: const TextStyle(color: Color(0xFF1E293B)),
-                                                decoration: InputDecoration(
-                                                  border: InputBorder.none,
-                                                  enabledBorder: InputBorder.none,
-                                                  focusedBorder: _isEditing ? OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF667EEA))) : InputBorder.none,
-                                                  isDense: true,
-                                                  contentPadding: const EdgeInsets.all(12),
-                                                  filled: _isEditing,
-                                                  fillColor: Colors.white.withOpacity(0.6),
+                                        color: WidgetStateProperty.resolveWith<Color?>((Set<WidgetState> states) {
+                                          if (isNeedsReview) return Colors.redAccent.withOpacity(0.15);
+                                          return null;
+                                        }),
+                                        cells: [
+                                          DataCell(
+                                            IconButton(
+                                              icon: Icon(
+                                                isNeedsReview ? Icons.flag : Icons.flag_outlined,
+                                                color: isNeedsReview ? Colors.redAccent : Colors.grey,
+                                              ),
+                                              onPressed: _isEditing ? () {
+                                                setState(() {
+                                                  _needsReviewList[index] = !_needsReviewList[index];
+                                                });
+                                              } : null,
+                                              tooltip: '要確認フラグを切り替え',
+                                            ),
+                                          ),
+                                          ..._headers.map((h) {
+                                            return DataCell(
+                                              Container(
+                                                constraints: const BoxConstraints(minWidth: 140, maxWidth: 250),
+                                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                                child: TextField(
+                                                  controller: rowControllers[h],
+                                                  readOnly: !_isEditing,
+                                                  maxLines: null, 
+                                                  keyboardType: TextInputType.multiline, 
+                                                  style: TextStyle(
+                                                    color: isNeedsReview ? Colors.red.shade900 : const Color(0xFF1E293B),
+                                                    fontWeight: isNeedsReview ? FontWeight.bold : FontWeight.normal,
+                                                  ),
+                                                  decoration: InputDecoration(
+                                                    border: InputBorder.none,
+                                                    enabledBorder: InputBorder.none,
+                                                    focusedBorder: _isEditing ? OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF667EEA))) : InputBorder.none,
+                                                    isDense: true,
+                                                    contentPadding: const EdgeInsets.all(12),
+                                                    filled: _isEditing,
+                                                    fillColor: Colors.white.withOpacity(0.6),
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          );
-                                        }).toList(),
+                                            );
+                                          }),
+                                        ],
                                       );
-                                    }).toList(),
+                                    }),
                                   ),
                                 ),
                               )

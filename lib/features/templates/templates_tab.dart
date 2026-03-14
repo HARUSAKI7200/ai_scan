@@ -9,7 +9,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../database/app_database.dart';
 import '../../main.dart'; 
-// ★ 新しく作成したScanHelperをインポート
 import '../../utils/scan_helper.dart';
 import 'template_create_page.dart'; 
 
@@ -132,7 +131,6 @@ class TemplatesTab extends ConsumerWidget {
           child: _buildGlassCard(
             child: InkWell(
               borderRadius: BorderRadius.circular(24),
-              // ★ ScanHelperを使って直接カメラを起動
               onTap: () => ScanHelper.startScan(context, ref, template),
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -152,10 +150,27 @@ class TemplatesTab extends ConsumerWidget {
                           ),
                           child: Text(modeText, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: modeText == '表形式' ? Colors.green.shade700 : Colors.orange.shade800)),
                         ),
+                        // ★ 編集・複製メニューの追加
                         PopupMenuButton<String>(
                           icon: const Icon(Icons.more_vert, color: Color(0xFF475569)),
-                          onSelected: (value) { if (value == 'delete') _deleteTemplate(context, ref, template); },
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => TemplateCreatePage(templateToEdit: template, isDuplicate: false)),
+                              );
+                            } else if (value == 'duplicate') {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => TemplateCreatePage(templateToEdit: template, isDuplicate: true)),
+                              );
+                            } else if (value == 'delete') {
+                              _deleteTemplate(context, ref, template);
+                            }
+                          },
                           itemBuilder: (context) => [
+                            const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue, size: 20), SizedBox(width: 8), Text('編集')])),
+                            const PopupMenuItem(value: 'duplicate', child: Row(children: [Icon(Icons.copy, color: Colors.orange, size: 20), SizedBox(width: 8), Text('複製')])),
                             const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 20), SizedBox(width: 8), Text('削除', style: TextStyle(color: Colors.red))])),
                           ],
                         ),
@@ -184,7 +199,6 @@ class TemplatesTab extends ConsumerWidget {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        // ★ ScanHelperを使って直接カメラを起動
                         onPressed: () => ScanHelper.startScan(context, ref, template),
                         icon: const Icon(Icons.camera_alt),
                         label: const Text('スキャン開始'),

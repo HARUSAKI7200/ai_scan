@@ -4,11 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'firebase_options.dart';
 import 'database/app_database.dart';
-import 'features/main_navigation_page.dart'; // ★ HomePageから変更
+import 'features/main_navigation_page.dart'; 
 
-// データベースのプロバイダー
 final databaseProvider = Provider<AppDatabase>((ref) {
   return AppDatabase();
 });
@@ -20,12 +20,21 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // ★追加: AdMobの初期化
+  await MobileAds.instance.initialize();
+
+  // ★追加: テスト広告を確実に受け取るためのデバイスID登録
+  // ログに出力されていたIDをここに設定します
+  RequestConfiguration requestConfiguration = RequestConfiguration(
+    testDeviceIds: ["D891363E1C0BAE472DEE3401B4D913A2"],
+  );
+  MobileAds.instance.updateRequestConfiguration(requestConfiguration);
+
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // ステータスバーの色を透明に設定
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -36,12 +45,12 @@ Future<void> main() async {
   runApp(const ProviderScope(child: AiScanApp()));
 }
 
+// ... 以降の AiScanApp クラスはそのまま維持 ...
 class AiScanApp extends StatelessWidget {
   const AiScanApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // グラスモーフィズムに合う、少し青みがかったアクセントカラー
     const accentColor = Color(0xFF667EEA); 
 
     return MaterialApp(
@@ -50,14 +59,12 @@ class AiScanApp extends StatelessWidget {
       
       theme: ThemeData(
         useMaterial3: true,
-        // ★ 背景は各画面でグラデーションを描画するため透明に設定
         scaffoldBackgroundColor: Colors.transparent,
         fontFamily: 'NotoSansJP',
         
         colorScheme: ColorScheme.fromSeed(
           seedColor: accentColor,
           primary: accentColor,
-          // すりガラス感を邪魔しないように表面色も透明ベースに
           surface: Colors.transparent, 
         ),
         
@@ -86,7 +93,6 @@ class AiScanApp extends StatelessWidget {
           ),
         ),
 
-        // ボタンも少し丸みを帯びたリッチなデザインに
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             elevation: 4, 
@@ -108,7 +114,6 @@ class AiScanApp extends StatelessWidget {
 
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          // 入力フォーム自体も少し透けさせる
           fillColor: Colors.white.withOpacity(0.6),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           border: OutlineInputBorder(
@@ -137,7 +142,6 @@ class AiScanApp extends StatelessWidget {
         Locale('ja', 'JP'),
       ],
 
-      // ★ 起動画面を MainNavigationPage に変更
       home: const MainNavigationPage(),
     );
   }
